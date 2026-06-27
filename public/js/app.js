@@ -26,6 +26,7 @@ let currentUrl = '';
 let currentType = 'video';
 let currentJobId = null;
 let pollInterval = null;
+let analyzing = false;
 
 const PLATFORM_LABELS = {
   youtube: 'YouTube',
@@ -80,10 +81,32 @@ function detectPlatformFromUrl(url) {
   return 'generic';
 }
 
+function cleanYouTubeUrlClient(url) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, '');
+    if (host === 'youtu.be') {
+      const id = parsed.pathname.replace(/^\//, '').split('/')[0];
+      if (id) return `https://www.youtube.com/watch?v=${id}`;
+    }
+    if (host.includes('youtube.com')) {
+      const videoId = parsed.searchParams.get('v');
+      if (videoId) return `https://www.youtube.com/watch?v=${videoId}`;
+      if (parsed.pathname.startsWith('/shorts/')) {
+        const id = parsed.pathname.split('/')[2];
+        if (id) return `https://www.youtube.com/watch?v=${id}`;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return url;
+}
+
 function extractUrlFromText(input) {
   const text = String(input || '').trim();
   const match = text.match(/https?:\/\/[^\s<>"{}|\\^`[\]]+/i);
-  if (match) return match[0].replace(/[.,;:!?)]+$/, '');
+  if (match) return cleanYouTubeUrlClient(match[0].replace(/[.,;:!?)]+$/, ''));
   return text;
 }
 
@@ -148,11 +171,12 @@ function populateSelect(select, items, suggestedId) {
 function showPreviewLoading(url) {
   previewSection.classList.remove('hidden');
   previewTitle.textContent = 'Analizando enlace...';
-  previewUploader.textContent = '';
+  previewUploader.textContent = 'Esto puede tardar unos segundos';
   previewDuration.textContent = '';
   previewThumb.src = '';
   previewThumb.alt = 'Cargando miniatura';
   previewThumb.classList.add('loading');
+  downloadBtn.disabled = true;
   setPlatformBadge(detectPlatformFromUrl(url));
 }
 
@@ -173,6 +197,21 @@ function updatePreview(data) {
   };
 }
 
+async function fetchWithTimeout(url, options, ms = 60000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('Tiempo de espera agotado. Prueba el enlace directo del video.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function analyzeUrl() {
   const raw = urlInput.value.trim();
   showError(inputError, null);
@@ -182,18 +221,23 @@ async function analyzeUrl() {
     return;
   }
 
+  if (analyzing) return;
+
   const url = extractUrlFromText(raw);
   if (url !== raw) urlInput.value = url;
 
+  analyzing = true;
+
   setLoading(analyzeBtn, true);
+  downloadBtn.disabled = true;
   showPreviewLoading(url);
 
   try {
-    const res = await fetch('/api/info', {
+    const res = await fetchWithTimeout('/api/info', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
-    });
+    }, 60000);
 
     const data = await parseJsonResponse(res);
 
@@ -201,7 +245,8 @@ async function analyzeUrl() {
       throw new Error(data.error || 'Error al analizar');
     }
 
-    currentUrl = url;
+    currentUrl = data.webpage_url || url;
+    if (currentUrl !== urlInput.value) urlInput.value = currentUrl;
     updatePreview(data);
 
     populateSelect(videoFormatSelect, data.formats.video, data.suggested.video);
@@ -209,9 +254,12 @@ async function analyzeUrl() {
 
     resetDownloadState();
   } catch (err) {
-    previewSection.classList.add('hidden');
-    showError(inputError, err.message);
+    if (err.name !== 'AbortError') {
+      previewSection.classList.add('hidden');
+      showError(inputError, err.message);
+    }
   } finally {
+    analyzing = false;
     setLoading(analyzeBtn, false);
   }
 }

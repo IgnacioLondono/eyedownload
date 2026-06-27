@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const youtubedl = require('youtube-dl-exec');
 
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const YTDLP_TIMEOUT_MS = 45000;
 const ffmpegPath = require('ffmpeg-static');
 
 if (ffmpegPath) {
@@ -82,6 +83,26 @@ function extractUrl(input) {
   return text;
 }
 
+function cleanYouTubeUrl(parsed) {
+  const host = parsed.hostname.replace(/^www\./, '');
+
+  if (host === 'youtu.be') {
+    const id = parsed.pathname.replace(/^\//, '').split('/')[0];
+    if (id) return `https://www.youtube.com/watch?v=${id}`;
+  }
+
+  if (host === 'youtube.com' || host === 'm.youtube.com') {
+    if (parsed.pathname.startsWith('/shorts/')) {
+      const id = parsed.pathname.split('/')[2];
+      if (id) return `https://www.youtube.com/watch?v=${id}`;
+    }
+    const videoId = parsed.searchParams.get('v');
+    if (videoId) return `https://www.youtube.com/watch?v=${videoId}`;
+  }
+
+  return parsed.href;
+}
+
 function normalizeUrl(input) {
   const raw = extractUrl(input);
   try {
@@ -89,10 +110,20 @@ function normalizeUrl(input) {
     if (parsed.hostname === 'm.tiktok.com') parsed.hostname = 'www.tiktok.com';
     if (parsed.hostname === 'mobile.twitter.com') parsed.hostname = 'twitter.com';
     parsed.hash = '';
+
+    if (/youtube\.com|youtu\.be/i.test(parsed.hostname)) {
+      return cleanYouTubeUrl(parsed);
+    }
+
     return parsed.href;
   } catch {
     return raw;
   }
+}
+
+async function runYtDlp(url, flags = {}) {
+  const options = getYtDlpOptions(flags);
+  return youtubedl(url, options, { timeout: YTDLP_TIMEOUT_MS });
 }
 
 function isContentUrl(url) {
@@ -172,6 +203,9 @@ function translateYtDlpError(stderr, url) {
   }
   if (/HTTP Error 403|403 Forbidden/i.test(msg)) {
     return 'La plataforma bloqueo la solicitud. Intenta de nuevo o prueba otro enlace.';
+  }
+  if (/timed out|timeout|ETIMEDOUT|SIGTERM/i.test(msg)) {
+    return 'Tiempo de espera agotado. Prueba con el enlace directo del video sin playlist.';
   }
 
   return 'No se pudo analizar el enlace. Verifica la URL o que el contenido sea accesible.';
@@ -344,12 +378,14 @@ app.post('/api/info', async (req, res) => {
   const platform = detectPlatform(url);
 
   try {
-    const info = await youtubedl(url, getYtDlpOptions({
+    const info = await runYtDlp(url, {
       _platform: platform,
       dumpSingleJson: true,
       skipDownload: true,
       noPlaylist: true,
-    }));
+      socketTimeout: 15,
+      retries: 2,
+    });
 
     const { video, audio } = parseFormats(info.formats);
     const resolvedPlatform = detectPlatform(url, info.extractor_key || info.extractor);
@@ -416,9 +452,11 @@ app.post('/api/download', async (req, res) => {
     postprocessors,
     progress: true,
     noPlaylist: true,
+    socketTimeout: 15,
+    retries: 2,
   });
 
-  youtubedl(url, options)
+  youtubedl(url, options, { timeout: YTDLP_TIMEOUT_MS * 4 })
     .then(async (output) => {
       let filePath = typeof output === 'string' ? output.trim() : null;
 
@@ -432,7 +470,7 @@ app.post('/api/download', async (req, res) => {
       let title = 'descarga';
 
       try {
-        const info = await youtubedl(url, getYtDlpOptions({ _platform: platform, dumpSingleJson: true, skipDownload: true }));
+        const info = await runYtDlp(url, { _platform: platform, dumpSingleJson: true, skipDownload: true, noPlaylist: true });
         title = sanitizeFilename(info.title);
       } catch {
         /* use default title */
