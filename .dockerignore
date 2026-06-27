@@ -1,0 +1,9 @@
+node_modules
+downloads
+.git
+.gitignore
+*.log
+.env
+*.bat
+README.md
+terminals
