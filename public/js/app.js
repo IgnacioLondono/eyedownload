@@ -80,6 +80,22 @@ function detectPlatformFromUrl(url) {
   return 'generic';
 }
 
+function extractUrlFromText(input) {
+  const text = String(input || '').trim();
+  const match = text.match(/https?:\/\/[^\s<>"{}|\\^`[\]]+/i);
+  if (match) return match[0].replace(/[.,;:!?)]+$/, '');
+  return text;
+}
+
+function looksLikeContentUrl(url) {
+  const u = url.toLowerCase();
+  if (/tiktok\.com\/?(\?|$)/.test(u)) return false;
+  if (/youtube\.com\/?(\?|$)/.test(u)) return false;
+  if (/instagram\.com\/?(\?|$)/.test(u)) return false;
+  if (/twitter\.com\/?(\?|$)/.test(u) || /x\.com\/?(\?|$)/.test(u)) return false;
+  return /https?:\/\//.test(u) && u.length > 20;
+}
+
 function setPlatformBadge(platform) {
   const key = PLATFORM_ICONS[platform] ? platform : 'generic';
   const label = PLATFORM_LABELS[key] || 'Enlace';
@@ -158,13 +174,16 @@ function updatePreview(data) {
 }
 
 async function analyzeUrl() {
-  const url = urlInput.value.trim();
+  const raw = urlInput.value.trim();
   showError(inputError, null);
 
-  if (!url) {
+  if (!raw) {
     showError(inputError, 'Introduce una URL valida');
     return;
   }
+
+  const url = extractUrlFromText(raw);
+  if (url !== raw) urlInput.value = url;
 
   setLoading(analyzeBtn, true);
   showPreviewLoading(url);
@@ -314,7 +333,11 @@ urlInput.addEventListener('keydown', (e) => {
 });
 
 urlInput.addEventListener('paste', () => {
-  setTimeout(analyzeUrl, 100);
+  setTimeout(() => {
+    const url = extractUrlFromText(urlInput.value);
+    if (url !== urlInput.value) urlInput.value = url;
+    if (looksLikeContentUrl(url)) analyzeUrl();
+  }, 100);
 });
 
 if (window.location.protocol === 'file:') {

@@ -13,7 +13,8 @@ RUN apt-get update \
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev \
-  && chmod +x node_modules/youtube-dl-exec/bin/yt-dlp_linux 2>/dev/null || true
+  && chmod +x node_modules/youtube-dl-exec/bin/yt-dlp_linux 2>/dev/null || true \
+  && node_modules/youtube-dl-exec/bin/yt-dlp_linux -U || true
 
 COPY server.js ./
 COPY public ./public

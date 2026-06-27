@@ -3,6 +3,8 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const youtubedl = require('youtube-dl-exec');
+
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const ffmpegPath = require('ffmpeg-static');
 
 if (ffmpegPath) {
@@ -73,11 +75,124 @@ function detectPlatform(url, extractor) {
   return 'generic';
 }
 
+function extractUrl(input) {
+  const text = String(input || '').trim();
+  const match = text.match(/https?:\/\/[^\s<>"{}|\\^`[\]]+/i);
+  if (match) return match[0].replace(/[.,;:!?)]+$/, '');
+  return text;
+}
+
+function normalizeUrl(input) {
+  const raw = extractUrl(input);
+  try {
+    const parsed = new URL(raw);
+    if (parsed.hostname === 'm.tiktok.com') parsed.hostname = 'www.tiktok.com';
+    if (parsed.hostname === 'mobile.twitter.com') parsed.hostname = 'twitter.com';
+    parsed.hash = '';
+    return parsed.href;
+  } catch {
+    return raw;
+  }
+}
+
+function isContentUrl(url) {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, '');
+    const path = u.pathname.replace(/\/+$/, '') || '/';
+
+    if (host === 'tiktok.com' || host.startsWith('vm.tiktok.com') || host.startsWith('vt.tiktok.com')) {
+      if (host.startsWith('vm.') || host.startsWith('vt.')) return true;
+      if (path.includes('/video/')) return true;
+      if (path.startsWith('/t/')) return true;
+      return path !== '/' && !['/foryou', '/following', '/live'].includes(path);
+    }
+    if (host === 'youtube.com' || host === 'youtu.be') {
+      return host === 'youtu.be' || u.searchParams.has('v') || path.startsWith('/shorts/') || path.startsWith('/live/');
+    }
+    if (host === 'instagram.com') {
+      return /^\/(reel|p|tv|reels|stories)\//.test(path);
+    }
+    if (host === 'twitter.com' || host === 'x.com') {
+      return /\/status\/\d+/.test(path);
+    }
+    if (host === 'facebook.com' || host === 'fb.watch') {
+      return path !== '/' && path !== '/watch';
+    }
+    if (host === 'fb.watch') return true;
+
+    return path !== '/' && path.length > 1;
+  } catch {
+    return false;
+  }
+}
+
+function validateUrlInput(input) {
+  const url = normalizeUrl(input);
+
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return { ok: false, error: 'Introduce un enlace valido que empiece con http:// o https://' };
+  }
+
+  if (!isContentUrl(url)) {
+    const platform = detectPlatform(url);
+    const hints = {
+      tiktok: 'Pega el enlace directo del video de TikTok (Compartir > Copiar enlace), no la pagina principal.',
+      youtube: 'Pega el enlace del video de YouTube, no la pagina de inicio.',
+      instagram: 'Pega el enlace de un Reel, publicacion o historia de Instagram.',
+      twitter: 'Pega el enlace de un tweet que contenga el video.',
+      facebook: 'Pega el enlace directo del video de Facebook.',
+    };
+    return {
+      ok: false,
+      error: hints[platform] || 'Pega el enlace directo del video o publicacion, no la pagina principal del sitio.',
+    };
+  }
+
+  return { ok: true, url };
+}
+
+function translateYtDlpError(stderr, url) {
+  const msg = String(stderr || '');
+  const platform = detectPlatform(url);
+
+  if (/Unsupported URL/i.test(msg)) {
+    const hints = {
+      tiktok: 'Enlace de TikTok invalido. Usa Compartir > Copiar enlace del video.',
+      instagram: 'Enlace de Instagram invalido. Usa el enlace del Reel o publicacion.',
+      twitter: 'Enlace invalido. Usa el enlace del tweet con el video.',
+    };
+    return hints[platform] || 'URL no soportada. Pega el enlace directo del contenido.';
+  }
+  if (/Video unavailable|Private video|This video is not available/i.test(msg)) {
+    return 'El video no esta disponible, es privado o tiene restricciones regionales.';
+  }
+  if (/Sign in to confirm your age/i.test(msg)) {
+    return 'El contenido requiere verificacion de edad en la plataforma original.';
+  }
+  if (/HTTP Error 403|403 Forbidden/i.test(msg)) {
+    return 'La plataforma bloqueo la solicitud. Intenta de nuevo o prueba otro enlace.';
+  }
+
+  return 'No se pudo analizar el enlace. Verifica la URL o que el contenido sea accesible.';
+}
+
 function getYtDlpOptions(extra = {}) {
+  const platform = extra._platform;
+  delete extra._platform;
+
+  const headers = ['Referer:https://www.tiktok.com/', 'Accept-Language:en-US,en;q=0.9'];
+  if (platform === 'instagram') headers[0] = 'Referer:https://www.instagram.com/';
+  if (platform === 'twitter') headers[0] = 'Referer:https://twitter.com/';
+  if (platform === 'facebook') headers[0] = 'Referer:https://www.facebook.com/';
+
   return {
     noCheckCertificates: true,
     noWarnings: true,
     preferFreeFormats: true,
+    geoBypass: true,
+    userAgent: BROWSER_UA,
+    addHeader: headers,
     ...extra,
   };
 }
@@ -117,6 +232,22 @@ function parseFormats(rawFormats) {
           filesize: f.filesize || f.filesize_approx || null,
         });
       }
+    } else if (hasVideo && hasAudio) {
+      const key = `av-${height}-${ext}-${note}`;
+      if (!seenVideo.has(key)) {
+        seenVideo.add(key);
+        video.push({
+          formatId: f.format_id,
+          ext,
+          height,
+          fps,
+          note,
+          label: height
+            ? `${height}p (${ext.toUpperCase()}) — video+audio${note ? ` — ${note}` : ''}`
+            : `${ext.toUpperCase()} — video+audio${note ? ` — ${note}` : ''}`,
+          filesize: f.filesize || f.filesize_approx || null,
+        });
+      }
     } else if (hasAudio && !hasVideo) {
       const key = `${tbr}-${ext}-${note}`;
       if (!seenAudio.has(key)) {
@@ -139,14 +270,25 @@ function parseFormats(rawFormats) {
   return { video, audio };
 }
 
-function buildFormatSelector(type, formatId, quality) {
+function buildFormatSelector(type, formatId, quality, platform) {
   if (type === 'audio') {
     if (formatId) return formatId;
     return 'bestaudio/best';
   }
 
   if (formatId) {
-    return `${formatId}+bestaudio/best`;
+    return platform === 'youtube' ? `${formatId}+bestaudio/best` : formatId;
+  }
+
+  if (platform !== 'youtube') {
+    const genericMap = {
+      best: 'bestvideo+bestaudio/best',
+      '1080': 'best[height<=1080]/best',
+      '720': 'best[height<=720]/best',
+      '480': 'best[height<=480]/best',
+      '360': 'best[height<=360]/best',
+    };
+    return genericMap[quality] || genericMap.best;
   }
 
   const qualityMap = {
@@ -192,20 +334,25 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.post('/api/info', async (req, res) => {
-  const { url } = req.body;
+  const validation = validateUrlInput(req.body?.url);
 
-  if (!url || typeof url !== 'string') {
-    return res.status(400).json({ error: 'URL requerida' });
+  if (!validation.ok) {
+    return res.status(400).json({ error: validation.error });
   }
 
+  const url = validation.url;
+  const platform = detectPlatform(url);
+
   try {
-    const info = await youtubedl(url.trim(), getYtDlpOptions({
+    const info = await youtubedl(url, getYtDlpOptions({
+      _platform: platform,
       dumpSingleJson: true,
       skipDownload: true,
+      noPlaylist: true,
     }));
 
     const { video, audio } = parseFormats(info.formats);
-    const platform = detectPlatform(url, info.extractor_key || info.extractor);
+    const resolvedPlatform = detectPlatform(url, info.extractor_key || info.extractor);
 
     res.json({
       id: info.id,
@@ -214,7 +361,7 @@ app.post('/api/info', async (req, res) => {
       duration: info.duration,
       uploader: info.uploader || info.channel,
       webpage_url: info.webpage_url || url,
-      platform,
+      platform: resolvedPlatform,
       extractor: info.extractor_key || info.extractor || null,
       formats: { video, audio },
       suggested: {
@@ -225,18 +372,22 @@ app.post('/api/info', async (req, res) => {
   } catch (err) {
     console.error('Error info:', err.message);
     res.status(422).json({
-      error: 'No se pudo analizar el enlace. Verifica la URL o que el contenido sea accesible.',
+      error: translateYtDlpError(err.stderr || err.message, url),
       detail: err.stderr || err.message,
     });
   }
 });
 
 app.post('/api/download', async (req, res) => {
-  const { url, type = 'video', quality = 'best', formatId, audioFormat = 'mp3' } = req.body;
+  const validation = validateUrlInput(req.body?.url);
 
-  if (!url || typeof url !== 'string') {
-    return res.status(400).json({ error: 'URL requerida' });
+  if (!validation.ok) {
+    return res.status(400).json({ error: validation.error });
   }
+
+  const url = validation.url;
+  const { type = 'video', quality = 'best', formatId, audioFormat = 'mp3' } = req.body;
+  const platform = detectPlatform(url);
 
   const jobId = crypto.randomBytes(8).toString('hex');
   const outputTemplate = path.join(DOWNLOADS_DIR, `${jobId}.%(ext)s`);
@@ -254,18 +405,20 @@ app.post('/api/download', async (req, res) => {
 
   res.json({ jobId });
 
-  const formatSelector = buildFormatSelector(type, formatId, quality);
+  const formatSelector = buildFormatSelector(type, formatId, quality, platform);
   const postprocessors = buildPostProcessors(type, audioFormat);
 
   const options = getYtDlpOptions({
+    _platform: platform,
     format: formatSelector,
     output: outputTemplate,
     mergeOutputFormat: type === 'video' ? 'mp4' : undefined,
     postprocessors,
     progress: true,
+    noPlaylist: true,
   });
 
-  youtubedl(url.trim(), options)
+  youtubedl(url, options)
     .then(async (output) => {
       let filePath = typeof output === 'string' ? output.trim() : null;
 
@@ -279,7 +432,7 @@ app.post('/api/download', async (req, res) => {
       let title = 'descarga';
 
       try {
-        const info = await youtubedl(url.trim(), getYtDlpOptions({ dumpSingleJson: true, skipDownload: true }));
+        const info = await youtubedl(url, getYtDlpOptions({ _platform: platform, dumpSingleJson: true, skipDownload: true }));
         title = sanitizeFilename(info.title);
       } catch {
         /* use default title */
