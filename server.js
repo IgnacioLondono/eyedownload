@@ -103,19 +103,98 @@ function cleanYouTubeUrl(parsed) {
   return parsed.href;
 }
 
+function stripTrackingParams(parsed, keepParams = []) {
+  if (keepParams.length === 0) {
+    parsed.search = '';
+  } else {
+    const kept = new URLSearchParams();
+    for (const key of keepParams) {
+      if (parsed.searchParams.has(key)) kept.set(key, parsed.searchParams.get(key));
+    }
+    parsed.search = kept.toString() ? `?${kept.toString()}` : '';
+  }
+  parsed.hash = '';
+  return parsed;
+}
+
+function cleanTikTokUrl(parsed) {
+  stripTrackingParams(parsed);
+  return parsed.href;
+}
+
+function cleanInstagramUrl(parsed) {
+  parsed.pathname = parsed.pathname.replace(/\/reels\//, '/reel/');
+  stripTrackingParams(parsed);
+  return parsed.href;
+}
+
+function cleanTwitterUrl(parsed) {
+  if (parsed.hostname === 'x.com') parsed.hostname = 'twitter.com';
+  if (parsed.hostname === 'mobile.twitter.com') parsed.hostname = 'twitter.com';
+  stripTrackingParams(parsed);
+  return parsed.href;
+}
+
+function cleanFacebookUrl(parsed) {
+  if (parsed.hostname === 'fb.watch') return parsed.href;
+  stripTrackingParams(parsed, ['v', 'id', 'story_fbid']);
+  return parsed.href;
+}
+
+function cleanVimeoUrl(parsed) {
+  stripTrackingParams(parsed);
+  return parsed.href;
+}
+
+function cleanSoundCloudUrl(parsed) {
+  stripTrackingParams(parsed);
+  return parsed.href;
+}
+
+function cleanRedditUrl(parsed) {
+  stripTrackingParams(parsed);
+  return parsed.href;
+}
+
+function cleanDailymotionUrl(parsed) {
+  if (parsed.hostname === 'dai.ly') {
+    const id = parsed.pathname.replace(/^\//, '').split('/')[0];
+    if (id) return `https://www.dailymotion.com/video/${id}`;
+  }
+  stripTrackingParams(parsed);
+  return parsed.href;
+}
+
+function cleanTwitchUrl(parsed) {
+  stripTrackingParams(parsed);
+  return parsed.href;
+}
+
+function applyPlatformCleaning(parsed) {
+  const host = parsed.hostname.replace(/^www\./, '').toLowerCase();
+
+  if (/youtube\.com|youtu\.be|m\.youtube\.com/.test(host)) return cleanYouTubeUrl(parsed);
+  if (host.includes('tiktok.com')) return cleanTikTokUrl(parsed);
+  if (host === 'instagram.com') return cleanInstagramUrl(parsed);
+  if (host === 'twitter.com' || host === 'x.com') return cleanTwitterUrl(parsed);
+  if (host === 'facebook.com' || host === 'fb.watch' || host === 'm.facebook.com') return cleanFacebookUrl(parsed);
+  if (host === 'vimeo.com' || host === 'player.vimeo.com') return cleanVimeoUrl(parsed);
+  if (host === 'soundcloud.com' || host === 'on.soundcloud.com') return cleanSoundCloudUrl(parsed);
+  if (host.includes('reddit.com') || host === 'v.redd.it') return cleanRedditUrl(parsed);
+  if (host.includes('dailymotion.com') || host === 'dai.ly') return cleanDailymotionUrl(parsed);
+  if (host.includes('twitch.tv') || host === 'clips.twitch.tv') return cleanTwitchUrl(parsed);
+
+  parsed.hash = '';
+  parsed.search = parsed.search || '';
+  return parsed.href;
+}
+
 function normalizeUrl(input) {
   const raw = extractUrl(input);
   try {
     const parsed = new URL(raw);
     if (parsed.hostname === 'm.tiktok.com') parsed.hostname = 'www.tiktok.com';
-    if (parsed.hostname === 'mobile.twitter.com') parsed.hostname = 'twitter.com';
-    parsed.hash = '';
-
-    if (/youtube\.com|youtu\.be/i.test(parsed.hostname)) {
-      return cleanYouTubeUrl(parsed);
-    }
-
-    return parsed.href;
+    return applyPlatformCleaning(parsed);
   } catch {
     return raw;
   }
@@ -129,16 +208,16 @@ async function runYtDlp(url, flags = {}) {
 function isContentUrl(url) {
   try {
     const u = new URL(url);
-    const host = u.hostname.replace(/^www\./, '');
+    const host = u.hostname.replace(/^www\./, '').toLowerCase();
     const path = u.pathname.replace(/\/+$/, '') || '/';
 
-    if (host === 'tiktok.com' || host.startsWith('vm.tiktok.com') || host.startsWith('vt.tiktok.com')) {
+    if (host.includes('tiktok.com')) {
       if (host.startsWith('vm.') || host.startsWith('vt.')) return true;
       if (path.includes('/video/')) return true;
       if (path.startsWith('/t/')) return true;
-      return path !== '/' && !['/foryou', '/following', '/live'].includes(path);
+      return path !== '/' && !['/foryou', '/following', '/live', '/explore'].includes(path);
     }
-    if (host === 'youtube.com' || host === 'youtu.be') {
+    if (host.includes('youtube.com') || host === 'youtu.be' || host === 'm.youtube.com') {
       return host === 'youtu.be' || u.searchParams.has('v') || path.startsWith('/shorts/') || path.startsWith('/live/');
     }
     if (host === 'instagram.com') {
@@ -147,10 +226,25 @@ function isContentUrl(url) {
     if (host === 'twitter.com' || host === 'x.com') {
       return /\/status\/\d+/.test(path);
     }
-    if (host === 'facebook.com' || host === 'fb.watch') {
-      return path !== '/' && path !== '/watch';
+    if (host === 'fb.watch') return path.length > 1;
+    if (host === 'facebook.com' || host === 'm.facebook.com') {
+      return u.searchParams.has('v') || /\/(reel|reels|watch|videos)\//.test(path);
     }
-    if (host === 'fb.watch') return true;
+    if (host === 'vimeo.com' || host === 'player.vimeo.com') {
+      return /\/(\d+|video\/\d+|channels\/|groups\/)/.test(path);
+    }
+    if (host === 'twitch.tv' || host === 'clips.twitch.tv') {
+      return /\/(videos\/\d+|clip\/|[^/]+\/clip\/)/.test(path) || host === 'clips.twitch.tv';
+    }
+    if (host === 'soundcloud.com' || host === 'on.soundcloud.com') {
+      return path.split('/').filter(Boolean).length >= 2;
+    }
+    if (host.includes('reddit.com') || host === 'v.redd.it') {
+      return /\/comments\/|v\.redd\.it|\/video\//.test(url);
+    }
+    if (host.includes('dailymotion.com') || host === 'dai.ly') {
+      return host === 'dai.ly' || /\/video\//.test(path);
+    }
 
     return path !== '/' && path.length > 1;
   } catch {
@@ -172,7 +266,12 @@ function validateUrlInput(input) {
       youtube: 'Pega el enlace del video de YouTube, no la pagina de inicio.',
       instagram: 'Pega el enlace de un Reel, publicacion o historia de Instagram.',
       twitter: 'Pega el enlace de un tweet que contenga el video.',
-      facebook: 'Pega el enlace directo del video de Facebook.',
+      facebook: 'Pega el enlace directo del video de Facebook o fb.watch.',
+      vimeo: 'Pega el enlace directo del video de Vimeo.',
+      twitch: 'Pega el enlace del clip o VOD de Twitch.',
+      soundcloud: 'Pega el enlace directo de la pista de SoundCloud.',
+      reddit: 'Pega el enlace del post de Reddit que contiene el video.',
+      dailymotion: 'Pega el enlace directo del video de Dailymotion.',
     };
     return {
       ok: false,
@@ -192,6 +291,10 @@ function translateYtDlpError(stderr, url) {
       tiktok: 'Enlace de TikTok invalido. Usa Compartir > Copiar enlace del video.',
       instagram: 'Enlace de Instagram invalido. Usa el enlace del Reel o publicacion.',
       twitter: 'Enlace invalido. Usa el enlace del tweet con el video.',
+      facebook: 'Enlace de Facebook invalido. Usa el enlace del video o fb.watch.',
+      vimeo: 'Enlace de Vimeo invalido. Usa la URL directa del video.',
+      twitch: 'Enlace de Twitch invalido. Usa un clip o VOD.',
+      soundcloud: 'Enlace de SoundCloud invalido. Usa la URL de la pista.',
     };
     return hints[platform] || 'URL no soportada. Pega el enlace directo del contenido.';
   }
@@ -215,10 +318,22 @@ function getYtDlpOptions(extra = {}) {
   const platform = extra._platform;
   delete extra._platform;
 
-  const headers = ['Referer:https://www.tiktok.com/', 'Accept-Language:en-US,en;q=0.9'];
-  if (platform === 'instagram') headers[0] = 'Referer:https://www.instagram.com/';
-  if (platform === 'twitter') headers[0] = 'Referer:https://twitter.com/';
-  if (platform === 'facebook') headers[0] = 'Referer:https://www.facebook.com/';
+  const referers = {
+    youtube: 'https://www.youtube.com/',
+    tiktok: 'https://www.tiktok.com/',
+    instagram: 'https://www.instagram.com/',
+    twitter: 'https://twitter.com/',
+    facebook: 'https://www.facebook.com/',
+    vimeo: 'https://vimeo.com/',
+    twitch: 'https://www.twitch.tv/',
+    soundcloud: 'https://soundcloud.com/',
+    reddit: 'https://www.reddit.com/',
+    dailymotion: 'https://www.dailymotion.com/',
+  };
+  const headers = [
+    `Referer:${referers[platform] || 'https://www.google.com/'}`,
+    'Accept-Language:en-US,en;q=0.9',
+  ];
 
   return {
     noCheckCertificates: true,
@@ -336,12 +451,15 @@ function buildFormatSelector(type, formatId, quality, platform) {
   return qualityMap[quality] || qualityMap.best;
 }
 
-function buildPostProcessors(type, audioFormat) {
+function buildPostProcessors(type, audioFormat, platform) {
   if (type === 'audio') {
     const fmt = audioFormat === 'm4a' ? 'm4a' : 'mp3';
     return [{ key: 'FFmpegExtractAudio', preferredcodec: fmt, preferredquality: '192' }];
   }
-  return [{ key: 'FFmpegVideoConvertor', preferedformat: 'mp4' }];
+  if (platform === 'youtube') {
+    return [{ key: 'FFmpegVideoConvertor', preferedformat: 'mp4' }];
+  }
+  return [];
 }
 
 function cleanupOldFiles() {
@@ -442,7 +560,7 @@ app.post('/api/download', async (req, res) => {
   res.json({ jobId });
 
   const formatSelector = buildFormatSelector(type, formatId, quality, platform);
-  const postprocessors = buildPostProcessors(type, audioFormat);
+  const postprocessors = buildPostProcessors(type, audioFormat, platform);
 
   const options = getYtDlpOptions({
     _platform: platform,

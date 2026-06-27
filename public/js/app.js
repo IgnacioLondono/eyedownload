@@ -103,19 +103,60 @@ function cleanYouTubeUrlClient(url) {
   return url;
 }
 
+function normalizeUrlClient(input) {
+  const raw = extractUrlFromText(input);
+  try {
+    const parsed = new URL(raw);
+    const host = parsed.hostname.replace(/^www\./, '').toLowerCase();
+
+    if (/youtube\.com|youtu\.be|m\.youtube\.com/.test(host)) {
+      return cleanYouTubeUrlClient(raw);
+    }
+    if (host.includes('tiktok.com')) {
+      parsed.search = '';
+      parsed.hash = '';
+      return parsed.href;
+    }
+    if (host === 'instagram.com') {
+      parsed.pathname = parsed.pathname.replace(/\/reels\//, '/reel/');
+      parsed.search = '';
+      parsed.hash = '';
+      return parsed.href;
+    }
+    if (host === 'x.com' || host === 'twitter.com') {
+      parsed.hostname = 'twitter.com';
+      parsed.search = '';
+      parsed.hash = '';
+      return parsed.href;
+    }
+    if (host === 'dai.ly') {
+      const id = parsed.pathname.replace(/^\//, '').split('/')[0];
+      if (id) return `https://www.dailymotion.com/video/${id}`;
+    }
+    parsed.hash = '';
+    return parsed.href;
+  } catch {
+    return raw;
+  }
+}
+
 function extractUrlFromText(input) {
   const text = String(input || '').trim();
   const match = text.match(/https?:\/\/[^\s<>"{}|\\^`[\]]+/i);
-  if (match) return cleanYouTubeUrlClient(match[0].replace(/[.,;:!?)]+$/, ''));
+  if (match) return match[0].replace(/[.,;:!?)]+$/, '');
   return text;
 }
 
 function looksLikeContentUrl(url) {
   const u = url.toLowerCase();
-  if (/tiktok\.com\/?(\?|$)/.test(u)) return false;
-  if (/youtube\.com\/?(\?|$)/.test(u)) return false;
-  if (/instagram\.com\/?(\?|$)/.test(u)) return false;
-  if (/twitter\.com\/?(\?|$)/.test(u) || /x\.com\/?(\?|$)/.test(u)) return false;
+  if (/tiktok\.com\/?(\?|#|$)/.test(u)) return false;
+  if (/youtube\.com\/?(\?|#|$)/.test(u)) return false;
+  if (/instagram\.com\/?(\?|#|$)/.test(u)) return false;
+  if (/twitter\.com\/?(\?|#|$)/.test(u) || /x\.com\/?(\?|#|$)/.test(u)) return false;
+  if (/facebook\.com\/?(\?|#|$)/.test(u)) return false;
+  if (/vimeo\.com\/?(\?|#|$)/.test(u)) return false;
+  if (/twitch\.tv\/?(\?|#|$)/.test(u)) return false;
+  if (/soundcloud\.com\/?(\?|#|$)/.test(u)) return false;
   return /https?:\/\//.test(u) && u.length > 20;
 }
 
@@ -223,7 +264,7 @@ async function analyzeUrl() {
 
   if (analyzing) return;
 
-  const url = extractUrlFromText(raw);
+  const url = normalizeUrlClient(raw);
   if (url !== raw) urlInput.value = url;
 
   analyzing = true;
@@ -382,7 +423,7 @@ urlInput.addEventListener('keydown', (e) => {
 
 urlInput.addEventListener('paste', () => {
   setTimeout(() => {
-    const url = extractUrlFromText(urlInput.value);
+    const url = normalizeUrlClient(urlInput.value);
     if (url !== urlInput.value) urlInput.value = url;
     if (looksLikeContentUrl(url)) analyzeUrl();
   }, 100);
