@@ -3,15 +3,17 @@ FROM node:20-bookworm-slim
 WORKDIR /app
 
 ENV YOUTUBE_DL_SKIP_PYTHON_CHECK=1
+ENV YOUTUBE_DL_FILENAME=yt-dlp_linux
 ENV PORT=7842
 ENV NODE_ENV=production
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates \
+  && apt-get install -y --no-install-recommends ca-certificates python3 \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev \
+  && chmod +x node_modules/youtube-dl-exec/bin/yt-dlp_linux 2>/dev/null || true
 
 COPY server.js ./
 COPY public ./public

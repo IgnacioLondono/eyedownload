@@ -9,6 +9,7 @@ services:
     environment:
       PORT: 7842
       YOUTUBE_DL_SKIP_PYTHON_CHECK: "1"
+      YOUTUBE_DL_FILENAME: yt-dlp_linux
       NODE_ENV: production
     volumes:
       - eyedownload_downloads:/app/downloads
