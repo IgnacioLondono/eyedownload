@@ -451,15 +451,19 @@ function buildFormatSelector(type, formatId, quality, platform) {
   return qualityMap[quality] || qualityMap.best;
 }
 
-function buildPostProcessors(type, audioFormat, platform) {
+function buildDownloadExtras(type, audioFormat, platform) {
   if (type === 'audio') {
     const fmt = audioFormat === 'm4a' ? 'm4a' : 'mp3';
-    return [{ key: 'FFmpegExtractAudio', preferredcodec: fmt, preferredquality: '192' }];
+    return {
+      extractAudio: true,
+      audioFormat: fmt,
+      audioQuality: '192K',
+    };
   }
   if (platform === 'youtube') {
-    return [{ key: 'FFmpegVideoConvertor', preferedformat: 'mp4' }];
+    return { recodeVideo: 'mp4' };
   }
-  return [];
+  return {};
 }
 
 function cleanupOldFiles() {
@@ -560,18 +564,18 @@ app.post('/api/download', async (req, res) => {
   res.json({ jobId });
 
   const formatSelector = buildFormatSelector(type, formatId, quality, platform);
-  const postprocessors = buildPostProcessors(type, audioFormat, platform);
+  const downloadExtras = buildDownloadExtras(type, audioFormat, platform);
 
   const options = getYtDlpOptions({
     _platform: platform,
     format: formatSelector,
     output: outputTemplate,
     mergeOutputFormat: type === 'video' ? 'mp4' : undefined,
-    postprocessors,
     progress: true,
     noPlaylist: true,
     socketTimeout: 15,
     retries: 2,
+    ...downloadExtras,
   });
 
   youtubedl(url, options, { timeout: YTDLP_TIMEOUT_MS * 4 })
