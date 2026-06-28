@@ -236,11 +236,16 @@ function getAutoFormatLabel(quality) {
   return size ? `Automatico (recomendado) — ${size}` : 'Automatico (recomendado)';
 }
 
+function onDownloadOptionsChanged() {
+  resetDownloadState();
+}
+
 function updateFormatSelectForQuality() {
   const quality = qualitySelect.value;
   const filtered = filterFormatsByQuality(cachedVideoFormats, quality);
   const suggested = filtered[0]?.formatId || null;
   populateSelect(videoFormatSelect, filtered, suggested, getAutoFormatLabel(quality));
+  onDownloadOptionsChanged();
 }
 
 function updateAudioSelectForQuality() {
@@ -406,6 +411,7 @@ tabs.forEach((tab) => {
     currentType = tab.dataset.type;
     videoOptions.classList.toggle('hidden', currentType !== 'video');
     audioOptions.classList.toggle('hidden', currentType !== 'audio');
+    onDownloadOptionsChanged();
   });
 });
 
@@ -493,6 +499,9 @@ function saveFile() {
 }
 
 qualitySelect.addEventListener('change', updateFormatSelectForQuality);
+videoFormatSelect.addEventListener('change', onDownloadOptionsChanged);
+audioFormatSelect.addEventListener('change', onDownloadOptionsChanged);
+audioQualitySelect.addEventListener('change', onDownloadOptionsChanged);
 
 analyzeBtn.addEventListener('click', analyzeUrl);
 downloadBtn.addEventListener('click', startDownload);
