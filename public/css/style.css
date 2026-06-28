@@ -24,6 +24,7 @@
 
 html {
   scroll-behavior: smooth;
+  overflow-x: clip;
 }
 
 body {
@@ -32,8 +33,6 @@ body {
   color: var(--text);
   min-height: 100vh;
   line-height: 1.5;
-  overflow-y: auto;
-  overflow-x: hidden;
 }
 
 .site {
@@ -57,22 +56,33 @@ body {
   z-index: 1;
   max-width: 720px;
   margin: 0 auto;
-  padding: 2rem 1.5rem 3rem;
+  padding: 1.5rem 1.5rem 3rem;
+}
+
+.sticky-promo-bar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  width: 100%;
+  background: rgba(10, 10, 15, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+
+.sticky-promo-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0.65rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
 .header {
   text-align: center;
   margin-bottom: 2rem;
-}
-
-.header-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.25rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--border);
 }
 
 .header-ecosystem {
@@ -85,10 +95,6 @@ body {
 
 .promo-link,
 .top-promo-link {
-  position: static;
-  top: auto;
-  right: auto;
-  z-index: auto;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -118,10 +124,11 @@ body {
 }
 
 @media (max-width: 480px) {
-  .header-top {
+  .sticky-promo-inner {
     flex-wrap: wrap;
     justify-content: center;
     text-align: center;
+    padding: 0.55rem 1rem;
   }
 
   .promo-link,

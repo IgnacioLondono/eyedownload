@@ -8,8 +8,27 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=6">
+  <link rel="stylesheet" href="css/style.css?v=7">
   <style>
+    .sticky-promo-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10, 10, 15, 0.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid #2a2a3a;
+    }
+
+    .sticky-promo-inner {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 0.65rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
     .promo-link,
     .top-promo-link {
       display: inline-flex;
@@ -36,18 +55,20 @@
 <body>
   <div class="site">
     <div class="bg-gradient" aria-hidden="true"></div>
+    <div class="sticky-promo-bar">
+      <div class="sticky-promo-inner">
+        <span class="header-ecosystem">Ecosistema Eyed</span>
+        <a href="https://eyedbio.eyedcomun.me/" target="_blank" rel="noopener noreferrer" class="promo-link top-promo-link" title="Eyed.bio — tu pagina link-in-bio">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+          Eyed.bio
+        </a>
+      </div>
+    </div>
     <div class="container">
       <header class="header">
-        <div class="header-top">
-          <span class="header-ecosystem">Ecosistema Eyed</span>
-          <a href="https://eyedbio.eyedcomun.me/" target="_blank" rel="noopener noreferrer" class="promo-link top-promo-link" title="Eyed.bio — tu pagina link-in-bio">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-            </svg>
-            Eyed.bio
-          </a>
-        </div>
         <div class="logo">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
@@ -146,6 +167,6 @@
   </div>
   </div>
 
-  <script src="js/app.js?v=6"></script>
+  <script src="js/app.js?v=7"></script>
 </body>
 </html>
