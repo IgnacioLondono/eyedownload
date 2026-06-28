@@ -61,18 +61,20 @@ body {
 }
 
 .header {
-  text-align: center;
   margin-bottom: 2rem;
 }
 
-.header-bar {
+.header-row {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .promo-link {
   position: static;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -102,9 +104,9 @@ body {
 .logo {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.75rem;
-  margin-bottom: 0.75rem;
+  min-width: 0;
 }
 
 .logo svg {
@@ -122,6 +124,7 @@ body {
   font-size: 0.95rem;
   max-width: 480px;
   margin: 0 auto;
+  text-align: center;
 }
 
 .card {
@@ -245,6 +248,19 @@ select {
 }
 
 @media (max-width: 600px) {
+  .header-row {
+    gap: 0.75rem;
+  }
+
+  .header h1 {
+    font-size: 1.35rem;
+  }
+
+  .promo-link {
+    padding: 0.4rem 0.65rem;
+    font-size: 0.75rem;
+  }
+
   .preview-grid {
     grid-template-columns: 1fr;
   }
