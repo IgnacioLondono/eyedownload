@@ -61,20 +61,34 @@ body {
 }
 
 .header {
+  text-align: center;
   margin-bottom: 2rem;
 }
 
-.header-row {
+.header-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
 }
 
-.promo-link {
+.header-ecosystem {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.promo-link,
+.top-promo-link {
   position: static;
-  flex-shrink: 0;
+  top: auto;
+  right: auto;
+  z-index: auto;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -89,24 +103,40 @@ body {
   transition: border-color 0.2s, color 0.2s, box-shadow 0.2s, background 0.2s;
 }
 
-.promo-link:hover {
+.promo-link:hover,
+.top-promo-link:hover {
   color: var(--text);
   background: var(--surface);
   border-color: var(--accent);
   box-shadow: 0 4px 16px rgba(99, 102, 241, 0.2);
 }
 
-.promo-link svg {
+.promo-link svg,
+.top-promo-link svg {
   flex-shrink: 0;
   opacity: 0.9;
+}
+
+@media (max-width: 480px) {
+  .header-top {
+    flex-wrap: wrap;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .promo-link,
+  .top-promo-link {
+    padding: 0.4rem 0.7rem;
+    font-size: 0.75rem;
+  }
 }
 
 .logo {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   gap: 0.75rem;
-  min-width: 0;
+  margin-bottom: 0.75rem;
 }
 
 .logo svg {
@@ -124,7 +154,6 @@ body {
   font-size: 0.95rem;
   max-width: 480px;
   margin: 0 auto;
-  text-align: center;
 }
 
 .card {
@@ -248,19 +277,6 @@ select {
 }
 
 @media (max-width: 600px) {
-  .header-row {
-    gap: 0.75rem;
-  }
-
-  .header h1 {
-    font-size: 1.35rem;
-  }
-
-  .promo-link {
-    padding: 0.4rem 0.65rem;
-    font-size: 0.75rem;
-  }
-
   .preview-grid {
     grid-template-columns: 1fr;
   }
