@@ -27,6 +27,9 @@ let currentType = 'video';
 let currentJobId = null;
 let pollInterval = null;
 let analyzing = false;
+let cachedVideoFormats = [];
+let cachedAudioFormats = [];
+let cachedQualityPresets = [];
 
 const PLATFORM_LABELS = {
   youtube: 'YouTube',
@@ -198,6 +201,52 @@ function showError(el, msg) {
   }
 }
 
+function formatFileSize(bytes) {
+  if (!bytes || bytes <= 0) return null;
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let i = 0;
+  while (size >= 1024 && i < units.length - 1) {
+    size /= 1024;
+    i += 1;
+  }
+  const decimals = i === 0 ? 0 : size >= 100 ? 0 : 1;
+  return `${size.toFixed(decimals)} ${units[i]}`;
+}
+
+function filterFormatsByQuality(formats, quality) {
+  if (quality === 'best') return formats;
+
+  let height = parseInt(quality, 10);
+  if (!Number.isFinite(height)) {
+    const legacy = { '1080': 1080, '720': 720, '480': 480, '360': 360 };
+    height = legacy[quality];
+  }
+  if (!height) return formats;
+
+  const exact = formats.filter((f) => f.height === height);
+  if (exact.length) return exact;
+
+  return formats.filter((f) => (f.height || 0) > 0 && (f.height || 0) <= height);
+}
+
+function getAutoFormatLabel(quality) {
+  const preset = cachedQualityPresets.find((p) => p.value === quality);
+  const size = formatFileSize(preset?.filesize);
+  return size ? `Automatico (recomendado) — ${size}` : 'Automatico (recomendado)';
+}
+
+function updateFormatSelectForQuality() {
+  const quality = qualitySelect.value;
+  const filtered = filterFormatsByQuality(cachedVideoFormats, quality);
+  const suggested = filtered[0]?.formatId || null;
+  populateSelect(videoFormatSelect, filtered, suggested, getAutoFormatLabel(quality));
+}
+
+function updateAudioSelectForQuality() {
+  populateSelect(audioQualitySelect, cachedAudioFormats, cachedAudioFormats[0]?.formatId, 'Mejor audio disponible');
+}
+
 function populateSelect(select, items, suggestedId, emptyLabel = 'Automatico (recomendado)') {
   select.innerHTML = `<option value="">${emptyLabel}</option>`;
   for (const item of items) {
@@ -311,9 +360,13 @@ async function analyzeUrl() {
     if (currentUrl !== urlInput.value) urlInput.value = currentUrl;
     updatePreview(data);
 
-    populateQualitySelect(data.qualityPresets || [{ value: 'best', label: 'Mejor calidad disponible' }]);
-    populateSelect(videoFormatSelect, data.formats.video, data.suggested.video);
-    populateSelect(audioQualitySelect, data.formats.audio, data.suggested.audio);
+    cachedVideoFormats = data.formats.video || [];
+    cachedAudioFormats = data.formats.audio || [];
+    cachedQualityPresets = data.qualityPresets || [{ value: 'best', label: 'Mejor calidad disponible' }];
+
+    populateQualitySelect(cachedQualityPresets);
+    updateFormatSelectForQuality();
+    populateSelect(audioQualitySelect, cachedAudioFormats, data.suggested.audio, 'Mejor audio disponible');
     populateAudioFormatSelect(data.audioOutputOptions || [
       { value: 'mp3', label: 'MP3 (192 kbps)' },
       { value: 'm4a', label: 'M4A (AAC)' },
@@ -438,6 +491,8 @@ function saveFile() {
   if (!currentJobId) return;
   window.location.href = `/api/download/${currentJobId}/file`;
 }
+
+qualitySelect.addEventListener('change', updateFormatSelectForQuality);
 
 analyzeBtn.addEventListener('click', analyzeUrl);
 downloadBtn.addEventListener('click', startDownload);

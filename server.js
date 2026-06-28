@@ -366,10 +366,9 @@ function parseFormats(rawFormats) {
     const tbr = f.tbr || f.abr || 0;
 
     if (hasVideo && !hasAudio) {
-      const key = `${height}-${ext}-${note}`;
-      if (!seenVideo.has(key)) {
-        seenVideo.add(key);
-        video.push({
+      if (seenVideo.has(f.format_id)) continue;
+      seenVideo.add(f.format_id);
+      video.push({
           formatId: f.format_id,
           ext,
           height,
@@ -384,12 +383,10 @@ function parseFormats(rawFormats) {
           ),
           filesize: f.filesize || f.filesize_approx || null,
         });
-      }
     } else if (hasVideo && hasAudio) {
-      const key = `av-${height}-${ext}-${note}`;
-      if (!seenVideo.has(key)) {
-        seenVideo.add(key);
-        video.push({
+      if (seenVideo.has(f.format_id)) continue;
+      seenVideo.add(f.format_id);
+      video.push({
           formatId: f.format_id,
           ext,
           height,
@@ -404,12 +401,10 @@ function parseFormats(rawFormats) {
           ),
           filesize: f.filesize || f.filesize_approx || null,
         });
-      }
     } else if (hasAudio && !hasVideo) {
-      const key = `${tbr}-${ext}-${note}`;
-      if (!seenAudio.has(key)) {
-        seenAudio.add(key);
-        audio.push({
+      if (seenAudio.has(f.format_id)) continue;
+      seenAudio.add(f.format_id);
+      audio.push({
           formatId: f.format_id,
           ext,
           abr: tbr,
@@ -420,7 +415,6 @@ function parseFormats(rawFormats) {
           ),
           filesize: f.filesize || f.filesize_approx || null,
         });
-      }
     }
   }
 
@@ -455,42 +449,59 @@ function estimateBytes(filesize, bitrateKbps, durationSec) {
 }
 
 function buildQualityPresets(video, audio, duration) {
-  const tiers = [
-    { value: 'best', label: 'Mejor calidad disponible', maxHeight: Infinity },
-    { value: '1080', label: '1080p (Full HD)', maxHeight: 1080 },
-    { value: '720', label: '720p (HD)', maxHeight: 720 },
-    { value: '480', label: '480p', maxHeight: 480 },
-    { value: '360', label: '360p', maxHeight: 360 },
-  ];
-
   const bestAudio = audio[0];
   const audioSize = bestAudio
     ? estimateBytes(bestAudio.filesize, bestAudio.abr, duration)
     : null;
 
-  const presets = [];
-
-  for (const tier of tiers) {
-    let fmt;
-    if (tier.value === 'best') {
-      fmt = video[0];
-    } else {
-      fmt = video.find((v) => (v.height || 0) > 0 && (v.height || 0) <= tier.maxHeight);
-    }
-    if (!fmt) continue;
-
+  function presetSize(fmt) {
     const isCombined = (fmt.label || '').includes('video+audio');
     let size = estimateBytes(fmt.filesize, fmt.tbr, duration);
     if (size && !isCombined && audioSize) size += audioSize;
+    return size;
+  }
 
+  function tierLabel(height) {
+    if (height >= 2160) return `${height}p (4K)`;
+    if (height >= 1440) return `${height}p (2K)`;
+    if (height >= 1080) return `${height}p (Full HD)`;
+    if (height >= 720) return `${height}p (HD)`;
+    if (height >= 480) return `${height}p (SD)`;
+    return `${height}p`;
+  }
+
+  const heights = [...new Set(video.map((v) => v.height).filter((h) => h > 0))].sort((a, b) => b - a);
+  const presets = [];
+
+  if (video[0]) {
+    const fmt = video[0];
+    const h = fmt.height || 0;
     presets.push({
-      value: tier.value,
-      label: withFileSize(tier.label, size),
-      filesize: size,
+      value: 'best',
+      label: withFileSize(h ? `Mejor calidad (${h}p)` : 'Mejor calidad disponible', presetSize(fmt)),
+      maxHeight: Infinity,
+      height: h,
+      filesize: presetSize(fmt),
     });
   }
 
-  return presets.length ? presets : [{ value: 'best', label: 'Mejor calidad disponible', filesize: null }];
+  for (const height of heights) {
+    const formatsAtHeight = video.filter((v) => v.height === height);
+    const fmt = formatsAtHeight[0];
+    if (!fmt) continue;
+
+    presets.push({
+      value: String(height),
+      label: withFileSize(tierLabel(height), presetSize(fmt)),
+      maxHeight: height,
+      height,
+      filesize: presetSize(fmt),
+    });
+  }
+
+  return presets.length
+    ? presets
+    : [{ value: 'best', label: 'Mejor calidad disponible', maxHeight: Infinity, filesize: null }];
 }
 
 function buildAudioOutputOptions(duration, audio) {
@@ -513,6 +524,15 @@ function buildFormatSelector(type, formatId, quality, platform) {
 
   if (formatId) {
     return platform === 'youtube' ? `${formatId}+bestaudio/best` : formatId;
+  }
+
+  const heightLimit = quality !== 'best' ? parseInt(quality, 10) : NaN;
+
+  if (Number.isFinite(heightLimit)) {
+    if (platform !== 'youtube') {
+      return `best[height<=${heightLimit}]/best`;
+    }
+    return `bestvideo[height<=${heightLimit}]+bestaudio/best/best[height<=${heightLimit}]`;
   }
 
   if (platform !== 'youtube') {
