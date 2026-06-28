@@ -215,19 +215,23 @@ function formatFileSize(bytes) {
 }
 
 function filterFormatsByQuality(formats, quality) {
+  if (!formats.length) return [];
   if (quality === 'best') return formats;
 
-  let height = parseInt(quality, 10);
-  if (!Number.isFinite(height)) {
-    const legacy = { '1080': 1080, '720': 720, '480': 480, '360': 360 };
-    height = legacy[quality];
+  const preset = cachedQualityPresets.find((p) => p.value === quality);
+  if (preset?.formatIds?.length) {
+    const allowed = new Set(preset.formatIds);
+    const filtered = formats.filter((f) => allowed.has(f.formatId));
+    if (filtered.length) return filtered;
   }
-  if (!height) return formats;
 
-  const exact = formats.filter((f) => f.height === height);
+  const maxHeight = preset?.maxHeight ?? parseInt(quality, 10);
+  if (!Number.isFinite(maxHeight) || maxHeight === Infinity) return formats;
+
+  const exact = formats.filter((f) => f.height === maxHeight);
   if (exact.length) return exact;
 
-  return formats.filter((f) => (f.height || 0) > 0 && (f.height || 0) <= height);
+  return formats.filter((f) => (f.height || 0) > 0 && (f.height || 0) <= maxHeight);
 }
 
 function getAutoFormatLabel(quality) {
@@ -243,8 +247,7 @@ function onDownloadOptionsChanged() {
 function updateFormatSelectForQuality() {
   const quality = qualitySelect.value;
   const filtered = filterFormatsByQuality(cachedVideoFormats, quality);
-  const suggested = filtered[0]?.formatId || null;
-  populateSelect(videoFormatSelect, filtered, suggested, getAutoFormatLabel(quality));
+  populateSelect(videoFormatSelect, filtered, null, getAutoFormatLabel(quality));
   onDownloadOptionsChanged();
 }
 
@@ -253,12 +256,21 @@ function updateAudioSelectForQuality() {
 }
 
 function populateSelect(select, items, suggestedId, emptyLabel = 'Automatico (recomendado)') {
-  select.innerHTML = `<option value="">${emptyLabel}</option>`;
+  select.innerHTML = '';
+  const autoOpt = document.createElement('option');
+  autoOpt.value = '';
+  autoOpt.textContent = emptyLabel;
+  if (!suggestedId) autoOpt.selected = true;
+  select.appendChild(autoOpt);
+
   for (const item of items) {
     const opt = document.createElement('option');
     opt.value = item.formatId ?? item.value ?? '';
     opt.textContent = item.label;
-    if (item.formatId === suggestedId || item.value === suggestedId) opt.selected = true;
+    if (suggestedId && (item.formatId === suggestedId || item.value === suggestedId)) {
+      autoOpt.selected = false;
+      opt.selected = true;
+    }
     select.appendChild(opt);
   }
 }

@@ -482,6 +482,7 @@ function buildQualityPresets(video, audio, duration) {
       maxHeight: Infinity,
       height: h,
       filesize: presetSize(fmt),
+      formatIds: video.map((v) => v.formatId),
     });
   }
 
@@ -496,6 +497,7 @@ function buildQualityPresets(video, audio, duration) {
       maxHeight: height,
       height,
       filesize: presetSize(fmt),
+      formatIds: formatsAtHeight.map((v) => v.formatId),
     });
   }
 
