@@ -374,10 +374,14 @@ function parseFormats(rawFormats) {
           ext,
           height,
           fps,
+          tbr,
           note,
-          label: height
-            ? `${height}p${fps > 30 ? ` ${fps}fps` : ''} (${ext.toUpperCase()})${note ? ` — ${note}` : ''}`
-            : `${ext.toUpperCase()}${note ? ` — ${note}` : ''}`,
+          label: withFileSize(
+            height
+              ? `${height}p${fps > 30 ? ` ${fps}fps` : ''} (${ext.toUpperCase()})${note ? ` — ${note}` : ''}`
+              : `${ext.toUpperCase()}${note ? ` — ${note}` : ''}`,
+            f.filesize || f.filesize_approx
+          ),
           filesize: f.filesize || f.filesize_approx || null,
         });
       }
@@ -390,10 +394,14 @@ function parseFormats(rawFormats) {
           ext,
           height,
           fps,
+          tbr,
           note,
-          label: height
-            ? `${height}p (${ext.toUpperCase()}) — video+audio${note ? ` — ${note}` : ''}`
-            : `${ext.toUpperCase()} — video+audio${note ? ` — ${note}` : ''}`,
+          label: withFileSize(
+            height
+              ? `${height}p (${ext.toUpperCase()}) — video+audio${note ? ` — ${note}` : ''}`
+              : `${ext.toUpperCase()} — video+audio${note ? ` — ${note}` : ''}`,
+            f.filesize || f.filesize_approx
+          ),
           filesize: f.filesize || f.filesize_approx || null,
         });
       }
@@ -406,7 +414,10 @@ function parseFormats(rawFormats) {
           ext,
           abr: tbr,
           note,
-          label: `${Math.round(tbr)} kbps (${ext.toUpperCase()})${note ? ` — ${note}` : ''}`,
+          label: withFileSize(
+            `${Math.round(tbr)} kbps (${ext.toUpperCase()})${note ? ` — ${note}` : ''}`,
+            f.filesize || f.filesize_approx
+          ),
           filesize: f.filesize || f.filesize_approx || null,
         });
       }
@@ -417,6 +428,81 @@ function parseFormats(rawFormats) {
   audio.sort((a, b) => (b.abr || 0) - (a.abr || 0));
 
   return { video, audio };
+}
+
+function formatFileSize(bytes) {
+  if (!bytes || bytes <= 0) return null;
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let i = 0;
+  while (size >= 1024 && i < units.length - 1) {
+    size /= 1024;
+    i += 1;
+  }
+  const decimals = i === 0 ? 0 : size >= 100 ? 0 : 1;
+  return `${size.toFixed(decimals)} ${units[i]}`;
+}
+
+function withFileSize(label, bytes) {
+  const size = formatFileSize(bytes);
+  return size ? `${label} — ${size}` : label;
+}
+
+function estimateBytes(filesize, bitrateKbps, durationSec) {
+  if (filesize) return filesize;
+  if (bitrateKbps && durationSec) return Math.round((bitrateKbps * 1000 / 8) * durationSec);
+  return null;
+}
+
+function buildQualityPresets(video, audio, duration) {
+  const tiers = [
+    { value: 'best', label: 'Mejor calidad disponible', maxHeight: Infinity },
+    { value: '1080', label: '1080p (Full HD)', maxHeight: 1080 },
+    { value: '720', label: '720p (HD)', maxHeight: 720 },
+    { value: '480', label: '480p', maxHeight: 480 },
+    { value: '360', label: '360p', maxHeight: 360 },
+  ];
+
+  const bestAudio = audio[0];
+  const audioSize = bestAudio
+    ? estimateBytes(bestAudio.filesize, bestAudio.abr, duration)
+    : null;
+
+  const presets = [];
+
+  for (const tier of tiers) {
+    let fmt;
+    if (tier.value === 'best') {
+      fmt = video[0];
+    } else {
+      fmt = video.find((v) => (v.height || 0) > 0 && (v.height || 0) <= tier.maxHeight);
+    }
+    if (!fmt) continue;
+
+    const isCombined = (fmt.label || '').includes('video+audio');
+    let size = estimateBytes(fmt.filesize, fmt.tbr, duration);
+    if (size && !isCombined && audioSize) size += audioSize;
+
+    presets.push({
+      value: tier.value,
+      label: withFileSize(tier.label, size),
+      filesize: size,
+    });
+  }
+
+  return presets.length ? presets : [{ value: 'best', label: 'Mejor calidad disponible', filesize: null }];
+}
+
+function buildAudioOutputOptions(duration, audio) {
+  const source = audio[0];
+  const sourceSize = source ? estimateBytes(source.filesize, source.abr, duration) : null;
+  const mp3Size = duration ? Math.round((192 * 1000 / 8) * duration) : sourceSize;
+  const m4aSize = sourceSize || (duration ? Math.round((128 * 1000 / 8) * duration) : null);
+
+  return [
+    { value: 'mp3', label: withFileSize('MP3 (192 kbps)', mp3Size) },
+    { value: 'm4a', label: withFileSize('M4A (AAC)', m4aSize) },
+  ];
 }
 
 function buildFormatSelector(type, formatId, quality, platform) {
@@ -511,6 +597,8 @@ app.post('/api/info', async (req, res) => {
 
     const { video, audio } = parseFormats(info.formats);
     const resolvedPlatform = detectPlatform(url, info.extractor_key || info.extractor);
+    const qualityPresets = buildQualityPresets(video, audio, info.duration);
+    const audioOutputOptions = buildAudioOutputOptions(info.duration, audio);
 
     res.json({
       id: info.id,
@@ -522,6 +610,8 @@ app.post('/api/info', async (req, res) => {
       platform: resolvedPlatform,
       extractor: info.extractor_key || info.extractor || null,
       formats: { video, audio },
+      qualityPresets,
+      audioOutputOptions,
       suggested: {
         video: video[0]?.formatId || null,
         audio: audio[0]?.formatId || null,

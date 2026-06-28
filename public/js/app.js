@@ -198,14 +198,35 @@ function showError(el, msg) {
   }
 }
 
-function populateSelect(select, items, suggestedId) {
-  select.innerHTML = '<option value="">Automatico (recomendado)</option>';
+function populateSelect(select, items, suggestedId, emptyLabel = 'Automatico (recomendado)') {
+  select.innerHTML = `<option value="">${emptyLabel}</option>`;
   for (const item of items) {
     const opt = document.createElement('option');
-    opt.value = item.formatId;
+    opt.value = item.formatId ?? item.value ?? '';
     opt.textContent = item.label;
-    if (item.formatId === suggestedId) opt.selected = true;
+    if (item.formatId === suggestedId || item.value === suggestedId) opt.selected = true;
     select.appendChild(opt);
+  }
+}
+
+function populateQualitySelect(presets) {
+  qualitySelect.innerHTML = '';
+  for (const preset of presets) {
+    const opt = document.createElement('option');
+    opt.value = preset.value;
+    opt.textContent = preset.label;
+    qualitySelect.appendChild(opt);
+  }
+}
+
+function populateAudioFormatSelect(options, selected = 'mp3') {
+  audioFormatSelect.innerHTML = '';
+  for (const opt of options) {
+    const el = document.createElement('option');
+    el.value = opt.value;
+    el.textContent = opt.label;
+    if (opt.value === selected) el.selected = true;
+    audioFormatSelect.appendChild(el);
   }
 }
 
@@ -290,8 +311,13 @@ async function analyzeUrl() {
     if (currentUrl !== urlInput.value) urlInput.value = currentUrl;
     updatePreview(data);
 
+    populateQualitySelect(data.qualityPresets || [{ value: 'best', label: 'Mejor calidad disponible' }]);
     populateSelect(videoFormatSelect, data.formats.video, data.suggested.video);
     populateSelect(audioQualitySelect, data.formats.audio, data.suggested.audio);
+    populateAudioFormatSelect(data.audioOutputOptions || [
+      { value: 'mp3', label: 'MP3 (192 kbps)' },
+      { value: 'm4a', label: 'M4A (AAC)' },
+    ]);
 
     resetDownloadState();
   } catch (err) {
